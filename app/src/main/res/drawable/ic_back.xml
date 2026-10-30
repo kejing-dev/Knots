@@ -1,0 +1,4 @@
+<!-- ic_back: Material Icons "arrow_back_ios_new" (Google, Apache License 2.0, https://github.com/google/material-design-icons). Back. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillType="evenOdd" android:fillColor="#FFFFFFFF" android:pathData="M17.77,3.77L16,2 6,12l10,10 1.77,-1.77L9.54,12z"/>
+</vector>

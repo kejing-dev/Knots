@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# One design state -> one screenshot: tools/qa_shot.sh S08 [NAME] [extra debug cmds...]
+#   tools/qa_shot.sh "S08 masu 3" S08-masu3           -> .scratch/shots/S08-masu3.png
+#   tools/qa_shot.sh - S08-ghost "ghost 0.5"          ("-" = send no state command)
+# Sends `state <id>`, un-throttles the emulator to 60 fps (harness `fast on`), lets the panels and meshes render,
+# captures a full frame with the emulator console, throttles again. The idle emulator runs at ~1 fps and a pooled
+# panel needs several frames after `show` before it is drawn: never capture without `fast on`.
+set -u
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+export DEV=${DEV:?set DEV to the assigned emulator} AVD=${AVD:-} PKG=io.embodit.knots TAG=Knots
+export PATH="$PATH:${LOCALAPPDATA}/Android/Sdk/platform-tools"
+H="bash $ROOT/tools/harness/emu.sh"
+SH="$ROOT/.scratch/shots"; mkdir -p "$SH/emu"
+id="$1"; name="${2:-$1}"; shift; [ $# -gt 0 ] && shift
+cmd() { MSYS_NO_PATHCONV=1 adb -s $DEV shell "am broadcast -a $PKG.DEBUG -p $PKG --es cmd '$1'" >/dev/null 2>&1; }
+cap() { before=$(ls -1 "$SH/emu" 2>/dev/null | wc -l); adb -s $DEV emu screenrecord screenshot "$(cygpath -w "$SH/emu")" >/dev/null 2>&1
+  for i in $(seq 1 12); do sleep 0.5; after=$(ls -1 "$SH/emu" 2>/dev/null | wc -l); [ "$after" -gt "$before" ] && break; done; sleep 0.5
+  newest=$(ls -1t "$SH/emu"/*.png 2>/dev/null | head -1); [ -n "$newest" ] && mv -f "$newest" "$SH/$1.png" && echo "OK $SH/$1.png" || echo "capture FAILED"; }
+adb -s $DEV logcat -c
+[ "$id" != "-" ] && cmd "state $id"
+for c in "$@"; do cmd "$c"; done
+sleep "${PRE:-1.5}"
+$H fast on >/dev/null 2>&1
+sleep "${SETTLE:-6}"
+cap "$name"
+$H fast off >/dev/null 2>&1
+adb -s $DEV logcat -d -s Knots:V 2>/dev/null | grep -E "STATE S|FATAL|SCENE step built" | tail -2 | cut -c1-200

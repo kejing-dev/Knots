@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- English (default). Copy from the design package; the Chinese mirror is in values-zh. -->
+<resources>
+    <string name="app_name">Knots</string>
+    <string name="loading">Getting ready…</string>
+
+    <string name="welcome_title">A demo rope will tie each knot in front of you, step by step.</string>
+    <string name="welcome_has_rope">Do you have a rope?</string>
+    <string name="rope_yes">I have one</string>
+    <string name="rope_no">No rope</string>
+    <string name="welcome_size">How thick?</string>
+    <string name="size_thin">4 mm</string>
+    <string name="size_mid">8 mm</string>
+    <string name="size_thick">11 mm</string>
+    <string name="welcome_size_hint">Paracord 4 mm (5/32 in) · clothesline 8 mm · climbing rope 11 mm</string>
+    <string name="welcome_no_rope_hint">After each demo it is your turn: pinch the orange end and thread it along the dashes.</string>
+    <string name="safety">For learning only. For climbing, rescue or any load, get proper training first.</string>
+    <string name="action_start">Start</string>
+
+    <string name="library_title">Which knot?</string>
+    <string name="library_learned">✓ Learned</string>
+    <string name="library_scroll">%1$d knots · scroll for more</string>
+    <string name="library_meta">%1$d steps · level %2$s</string>
+    <string name="cat_all">All</string>
+    <string name="cat_basic">Basics</string>
+    <string name="cat_camping">Camping</string>
+    <string name="cat_boating">Boating</string>
+    <string name="cat_climbing">Climbing</string>
+
+    <string name="action_back">Back</string>
+    <string name="action_more">More</string>
+    <string name="action_settings">Settings</string>
+    <string name="action_turn90">90°</string>
+    <string name="action_my_view">My view</string>
+    <string name="post_hint">Stand a broom handle upright (between your knees or against a table), or use a chair\'s upright bar.</string>
+    <string name="action_follow">Tie along</string>
+    <string name="action_watch_again">Watch again</string>
+
+    <string name="step_count">%1$d / %2$d</string>
+    <string name="gaze_head_hint">Aim with your head</string>
+    <string name="controller_hint">Put the controller down to tie by hand · stick left / right turns the rope</string>
+    <string name="action_play">Play</string>
+    <string name="action_pause">Pause</string>
+    <string name="action_next">Next</string>
+    <string name="action_done">Done</string>
+    <string name="action_prev">Back</string>
+    <string name="action_replay">Replay</string>
+
+    <string name="yourturn_pinch">Your turn: pinch the orange end and drag it along the dashes</string>
+    <string name="yourturn_controller">Your turn: point at the orange end, hold the trigger and drag</string>
+    <string name="yourturn_pull">Your turn: pinch either end and pull it outwards</string>
+    <string name="yourturn_progress">Threaded</string>
+
+    <string name="done_title">Done!</string>
+    <string name="done_check">Check yours:</string>
+    <string name="action_again">Tie it again</string>
+    <string name="action_other_knot">Another knot</string>
+
+    <string name="resume_title">Last time: %1$s, step %2$d</string>
+    <string name="action_resume">Carry on</string>
+    <string name="action_library">All knots</string>
+
+    <string name="error_title">The knot data could not be read.</string>
+    <string name="version">Version %1$s</string>
+    <string name="action_retry">Retry</string>
+
+    <string name="away_behind">The demo rope is behind you</string>
+    <string name="away_left">The demo rope is to your left</string>
+    <string name="away_right">The demo rope is to your right</string>
+    <string name="action_bring_here">Bring it here</string>
+    <string name="away_body">It stays where you put its marker. Turn back to it, or put a new marker.</string>
+    <string name="action_new_marker">New marker</string>
+    <string name="marker_title">Put a marker on the floor where the demo rope should hang</string>
+    <string name="marker_how_pinch">Look at the floor and pinch, or point the controller and pull the trigger</string>
+    <string name="marker_how_controller">Point the controller at the floor and pull the trigger</string>
+    <string name="marker_hint">Somewhere a little in front of you, beside this panel</string>
+    <string name="marker_set">Marker set. Move the rope there, or pick another spot.</string>
+    <string name="action_to_marker">Move to marker</string>
+    <string name="menu_new_marker">Put a new marker</string>
+
+    <string name="settings_title">Settings</string>
+    <string name="action_close">Close</string>
+    <string name="settings_language">Language</string>
+    <string name="lang_system">System</string>
+    <string name="lang_zh">中文</string>
+    <string name="lang_en">English</string>
+    <string name="settings_hand">Main hand</string>
+    <string name="hand_right">Right</string>
+    <string name="hand_left">Left</string>
+    <string name="settings_has_rope">Rope in hand</string>
+    <string name="settings_size">Thickness</string>
+    <string name="settings_height">Rope height</string>
+    <string name="height_high">Higher</string>
+    <string name="height_normal">Normal</string>
+    <string name="height_low">Lower</string>
+    <string name="settings_dwell">Look at \"Next\" to turn the page</string>
+    <string name="settings_clear">Clear records</string>
+    <string name="settings_about">Knots %1$s · offline, no account. For learning only: climbing and rescue need proper training.</string>
+    <string name="confirm_clear">Clear every ✓ and your progress?</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_clear">Clear</string>
+
+    <string name="menu_bring_here">Move to marker</string>
+    <string name="menu_hide_rope">Hide the demo rope</string>
+    <string name="menu_show_rope">Show the demo rope</string>
+    <string name="menu_restart">Start from step 1</string>
+    <string name="menu_settings">Settings</string>
+    <string name="menu_home">All knots</string>
+</resources>

@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">绳结</string>
+    <string name="loading">准备中…</string>
+
+    <string name="welcome_title">演示绳会在你面前一步步打给你看</string>
+    <string name="welcome_has_rope">手里有绳子吗？</string>
+    <string name="rope_yes">我有绳</string>
+    <string name="rope_no">没有绳</string>
+    <string name="welcome_size">你的绳子多粗？</string>
+    <string name="size_thin">细 4 mm</string>
+    <string name="size_mid">中 8 mm</string>
+    <string name="size_thick">粗 11 mm</string>
+    <string name="welcome_size_hint">伞绳约 4 mm · 晾衣绳约 8 mm · 登山绳约 11 mm</string>
+    <string name="welcome_no_rope_hint">每步演示完轮到你：捏住橙色绳头，沿虚线自己穿一遍。</string>
+    <string name="safety">仅供学习；攀登、救援等承重用途请先接受专业培训。</string>
+    <string name="action_start">开始</string>
+
+    <string name="library_title">打哪个结</string>
+    <string name="library_learned">✓ 学会了</string>
+    <string name="library_scroll">共 %1$d 个结 · 上下滑动看全部</string>
+    <string name="library_meta">%1$d 步 · 难度 %2$s</string>
+    <string name="cat_all">全部</string>
+    <string name="cat_basic">基础</string>
+    <string name="cat_camping">露营</string>
+    <string name="cat_boating">航海</string>
+    <string name="cat_climbing">攀登</string>
+
+    <string name="action_back">返回</string>
+    <string name="action_more">更多</string>
+    <string name="action_settings">设置</string>
+    <string name="action_turn90">转 90°</string>
+    <string name="action_my_view">我的视角</string>
+    <string name="post_hint">竖着立一根扫帚柄（夹在膝间或靠着桌边），或者用椅背的竖杆。</string>
+    <string name="action_follow">跟着打</string>
+    <string name="action_watch_again">再看一遍</string>
+
+    <string name="step_count">%1$d / %2$d</string>
+    <string name="gaze_head_hint">用头的朝向对准按钮</string>
+    <string name="controller_hint">放下手柄，用手打结 · 摇杆左右转动</string>
+    <string name="action_play">播放</string>
+    <string name="action_pause">暂停</string>
+    <string name="action_next">下一步</string>
+    <string name="action_done">打好了</string>
+    <string name="action_prev">上一步</string>
+    <string name="action_replay">重播</string>
+
+    <string name="yourturn_pinch">你来穿：捏住橙色绳头，沿虚线拖过去</string>
+    <string name="yourturn_controller">你来穿：射线指着橙色绳头，按住扳机拖</string>
+    <string name="yourturn_pull">你来拉：捏住任一端往外拉</string>
+    <string name="yourturn_progress">穿了</string>
+
+    <string name="done_title">打好了</string>
+    <string name="done_check">对一下：</string>
+    <string name="action_again">再打一遍</string>
+    <string name="action_other_knot">换一个结</string>
+
+    <string name="resume_title">上次打到 %1$s 第 %2$d 步</string>
+    <string name="action_resume">接着打</string>
+    <string name="action_library">回绳结库</string>
+
+    <string name="error_title">绳结数据没读出来</string>
+    <string name="version">版本 %1$s</string>
+    <string name="action_retry">重试</string>
+
+    <string name="away_behind">演示绳在你身后</string>
+    <string name="away_left">演示绳在你左边</string>
+    <string name="away_right">演示绳在你右边</string>
+    <string name="action_bring_here">摆到面前</string>
+    <string name="away_body">它留在你放标记的地方。转回去看它，或者重新放一个标记。</string>
+    <string name="action_new_marker">重新放标记</string>
+    <string name="marker_title">在地上放个标记，演示绳就挂在它上方</string>
+    <string name="marker_how_pinch">看着地面捏一下，或者用手柄射线指着地面扣扳机</string>
+    <string name="marker_how_controller">用手柄射线指着地面，扣扳机</string>
+    <string name="marker_hint">放在你身前稍远、这块面板旁边</string>
+    <string name="marker_set">标记放好了。点「移到标记处」，或换个地方再放。</string>
+    <string name="action_to_marker">移到标记处</string>
+    <string name="menu_new_marker">重新放标记</string>
+
+    <string name="settings_title">设置</string>
+    <string name="action_close">关闭</string>
+    <string name="settings_language">语言</string>
+    <string name="lang_system">跟随系统</string>
+    <string name="lang_zh">中文</string>
+    <string name="lang_en">English</string>
+    <string name="settings_hand">惯用手</string>
+    <string name="hand_right">右手</string>
+    <string name="hand_left">左手</string>
+    <string name="settings_has_rope">手里有绳</string>
+    <string name="settings_size">绳子粗细</string>
+    <string name="settings_height">演示绳高度</string>
+    <string name="height_high">高一点</string>
+    <string name="height_normal">标准</string>
+    <string name="height_low">低一点</string>
+    <string name="settings_dwell">看着「下一步」翻页</string>
+    <string name="settings_clear">清空记录</string>
+    <string name="settings_about">绳结 %1$s · 全离线、无账号。仅供学习：攀登、救援请接受专业培训。</string>
+    <string name="confirm_clear">清空所有 ✓ 和进度？</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_clear">清空</string>
+
+    <string name="menu_bring_here">移到标记处</string>
+    <string name="menu_hide_rope">隐藏演示绳</string>
+    <string name="menu_show_rope">显示演示绳</string>
+    <string name="menu_restart">从第 1 步打</string>
+    <string name="menu_settings">设置</string>
+    <string name="menu_home">回绳结库</string>
+</resources>
