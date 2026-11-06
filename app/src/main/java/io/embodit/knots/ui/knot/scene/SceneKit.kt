@@ -146,9 +146,6 @@ internal class SceneMaterials(private val shared: SharedResources) {
     val marker: Material = sheer(KnotColors.WorkingOrange, 0.95f, depthTest = false)
     val markerGhost: Material = sheer(KnotColors.WorkingOrange, 0.45f, depthTest = false)
 
-    /** The handle bar under the rope: white 45 %. */
-    val handle: Material = sheer(KnotColors.White, 0.45f)
-
     private fun paletteBitmap(): Bitmap {
         val colors = intArrayOf(KnotColors.RopeHemp, KnotColors.RopeHempStripe, KnotColors.RopeOrange, KnotColors.RopeOrangeStripe, KnotColors.RopeBlue, KnotColors.RopeBlueStripe, KnotColors.RopeWhip, KnotColors.RopeWhip, KnotColors.RopeRed, KnotColors.RopeRedStripe)
         val bmp = Bitmap.createBitmap(colors.size, 1, Bitmap.Config.ARGB_8888)

@@ -20,7 +20,7 @@ import java.util.Locale
  *   adb -s <serial> shell "am broadcast -a io.embodit.knots.DEBUG -p io.embodit.knots --es cmd '<command>'"
  *
  * - `state <Sxx> [knot] [step] [hold]`  straight to a designed state: S00 S01 S02 S03 S04 S05 S06 S07 S08 S09 S10 S11 S12
- *                                S13 S14 S15 S16 (`state S04 bowline 2`, `state S16 bowline 2`, `state S13 bowline 3`,
+ *                                S13 S14 S15 S16 S18 (S18 = settings, quit-app confirm) (`state S04 bowline 2`, `state S16 bowline 2`, `state S13 bowline 3`,
  *                                `state S00 hold`); S08 = S04 turned 180°, S06 = paused at 60 %
  * - `knot <figure8|reef|clove|bowline>`, `step <n>`   pick a knot / jump to step n (places the rope when needed)
  * - `marker x,z [move]`           puts the floor marker at Stage (x, 0, z) (S17), `move` = and "move to marker"
@@ -34,7 +34,7 @@ import java.util.Locale
  *   `lang system|zh|en`, `category <all|basic|camping|boating|climbing>`
  * - `turn <deg>`                 sets the rope's turn (as a drag would); `turn90`; `myview`; `release` (snap within ±12°)
  * - `stick <x> [ms]`             the thumbstick held at x for ms (default 1000)
- * - `drag dx,dy,dz`              a handle drag of that many metres, released (then the 0.6 m clearance)
+ * - `recall`                     close the rope volume window and open it again in front (v0.1.4; `drag` is gone)
  * - `head yaw <deg>` / `head off`   the out-of-sight check and placement see the head turned (S14 without turning the camera)
  * - `gaze x,y,z` / `gaze off`    the gaze rests on that Stage point (dwell tests); `aim [control]` how far to turn to a control
  * - `dataerror on|off`           knots.json "fails" on the next load (S15: `dataerror on` + `state S00` or Retry)
@@ -111,7 +111,9 @@ internal object DebugCommands {
             "myview" -> host.dispatch(KnotEvent.MyViewClicked)
             "release" -> scene?.release()
             "stick" -> scene?.injectStick(numbers.firstOrNull() ?: 0.8f, (numbers.getOrNull(1) ?: 1000f).toLong())
-            "drag" -> if (numbers.size >= 3) scene?.debugHandleDrag(Vec3(numbers[0], numbers[1], numbers[2])) else KnotLog.i("CMD drag needs dx,dy,dz")
+            // v0.1.4: no own bar under the rope; the system volume window's bar moves it, "recall" brings it in front
+            "drag" -> KnotLog.i("CMD drag: gone in v0.1.4 (the rope is moved with the system volume window bar); use recall")
+            "recall" -> scene?.recallRope("debug")
             "head" -> {
                 scene?.headYawOverride = if (word == "off") 0f else numbers.firstOrNull() ?: 0f
                 KnotLog.i("HEAD yaw override=${scene?.headYawOverride}")

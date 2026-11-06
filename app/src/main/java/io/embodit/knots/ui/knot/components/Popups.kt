@@ -35,8 +35,8 @@ import io.embodit.knots.ui.theme.KnotColors
 
 /**
  * Settings (380 x 420 dp, S11; design `panels[1]`), a pooled attachment panel in front of the guide panel (a Stage
- * popup; no floating dialog): language, hand, rope or not, thickness, rope height, look-to-advance, clear, about. The
- * content scrolls past the panel's height. "Clear" swaps the content for the confirm strip (S12).
+ * popup; no floating dialog): language, hand, rope or not, thickness, rope height, look-to-advance, clear, about, quit.
+ * The content scrolls past the panel's height. "Clear" (S12) and "quit app" (S18) swap the content for a confirm strip.
  */
 @Composable
 internal fun SettingsPanel(state: KnotUiState, filled: Boolean, onEvent: (KnotEvent) -> Unit) {
@@ -51,6 +51,19 @@ internal fun SettingsPanel(state: KnotUiState, filled: Boolean, onEvent: (KnotEv
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 WordButton("confirm_cancel", rs(R.string.action_cancel), { onEvent(KnotEvent.ClearCancelled) }, minWidth = 120.dp)
                 WordButton("confirm_clear", rs(R.string.action_clear), { onEvent(KnotEvent.ClearConfirmed) }, danger = true, minWidth = 120.dp)
+            }
+            return@Glass
+        }
+        if (state.confirmExit) {
+            // S18 (D26): the second ask sits in the same panel, like "clear"; no second panel
+            Text(text = rs(R.string.settings_title), color = PicoTheme.colorScheme.labelPrimary, style = KnotType.title, maxLines = 1)
+            Spacer(modifier = Modifier.weight(1f))
+            Text(text = rs(R.string.exit_title), color = PicoTheme.colorScheme.labelPrimary, style = KnotType.big, maxLines = 2)
+            Text(text = rs(R.string.exit_body), color = PicoTheme.colorScheme.labelSecondary, style = KnotType.small, maxLines = 2)
+            Spacer(modifier = Modifier.weight(1f))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                WordButton("exit_cancel", rs(R.string.action_cancel), { onEvent(KnotEvent.ExitCancelled) }, minWidth = 120.dp)
+                WordButton("exit_confirm", rs(R.string.exit_yes), { onEvent(KnotEvent.ExitConfirmed) }, danger = true, minWidth = 120.dp)
             }
             return@Glass
         }
@@ -101,6 +114,10 @@ internal fun SettingsPanel(state: KnotUiState, filled: Boolean, onEvent: (KnotEv
                 WordButton("clear", rs(R.string.settings_clear), { onEvent(KnotEvent.ClearClicked) }, enabled = state.progress.records.isNotEmpty() || state.progress.current != null, minWidth = 140.dp)
             }
             Text(text = rs(R.string.settings_about, BuildConfig.VERSION_NAME), color = PicoTheme.colorScheme.labelSecondary, style = KnotType.label, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            // D26: "quit app" is the last row of settings
+            Row(modifier = Modifier.fillMaxWidth().height(KeyHeight), verticalAlignment = Alignment.CenterVertically) {
+                WordButton("exit", rs(R.string.settings_exit), { onEvent(KnotEvent.ExitClicked) }, danger = true, minWidth = 140.dp)
+            }
         }
     }
 }
@@ -123,6 +140,7 @@ internal fun Segments(
     itemHeight: Dp = KeyHeight,
     small: Boolean = false,
 ) {
+    // gate:allow tabs-segment the shared Segments helper: same-page options (language, hand, rope, size, height) and the library's category filter, never page switching
     SegmentControl(modifier = Modifier.width(itemWidth * items.size).height(itemHeight), backgroundColor = PicoTheme.colorScheme.fillTertiary) {
         items.forEachIndexed { i, (name, text) ->
             val onClick = { onSelect(i) }
@@ -153,7 +171,6 @@ internal fun MenuPanel(state: KnotUiState, filled: Boolean, onEvent: (KnotEvent)
     val (w, h) = PanelSpec.MENU_SIZE
     Glass(w.dp, h.dp, corner = 24.dp, padding = 10.dp, spacing = 6.dp) {
         if (!filled) return@Glass
-        RowButton("menu_marker", rs(R.string.menu_new_marker), "", "", { onEvent(KnotEvent.PlaceMarkerClicked) }, height = 48.dp)
         RowButton("menu_bring", rs(R.string.menu_bring_here), "", "", { onEvent(KnotEvent.MenuBringHere) }, height = 48.dp)
         RowButton("menu_hide", rs(if (state.ropeHidden) R.string.menu_show_rope else R.string.menu_hide_rope), "", "", { onEvent(KnotEvent.MenuHideRope) }, height = 48.dp)
         RowButton("menu_restart", rs(R.string.menu_restart), "", "", { onEvent(KnotEvent.MenuRestart) }, height = 48.dp)

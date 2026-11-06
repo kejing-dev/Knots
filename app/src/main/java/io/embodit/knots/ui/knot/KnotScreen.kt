@@ -1,6 +1,12 @@
 package io.embodit.knots.ui.knot
 
+import android.app.Activity
+import android.app.ActivityManager
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.pm.ApplicationInfo
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -16,6 +22,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pico.spatial.ui.foundation.dsl.registerSystem
 import com.pico.spatial.ui.foundation.dsl.unregisterSystem
+import com.pico.spatial.ui.platform.containers.LocalSpatialNavigator
+import com.pico.spatial.ui.platform.containers.SpatialNavigator
 import io.embodit.knots.platform.EyePermissionActivity
 import io.embodit.knots.platform.KnotLog
 import io.embodit.knots.ui.knot.components.KnotStage
@@ -24,6 +32,8 @@ import io.embodit.knots.ui.knot.components.localizedResources
 import io.embodit.knots.ui.knot.debug.KnotProbe
 import io.embodit.knots.ui.knot.scene.KnotFrameSystem
 import io.embodit.knots.ui.knot.scene.KnotScene
+import io.embodit.knots.ui.knot.scene.RopeWindow
+import kotlin.system.exitProcess
 
 /**
  * The one screen of the app, living in a Mixed Stage. It wires the three parts together: the
@@ -85,13 +95,25 @@ fun KnotScreen() {
 
     LaunchedEffect(scene, state) { scene.render(state) }
 
+    val navigator = LocalSpatialNavigator.current
+    DisposableEffect(navigator, viewModel) {
+        RopeWindow.navigator = navigator
+        RopeWindow.onClosedByUser = { viewModel.onEvent(KnotEvent.RopeWindowClosed) }
+        onDispose {
+            if (RopeWindow.navigator === navigator) RopeWindow.navigator = null
+            RopeWindow.onClosedByUser = null
+        }
+    }
+
     LaunchedEffect(viewModel) {
         viewModel.effects.collect { effect: KnotUiEffect ->
             when (effect) {
                 is KnotUiEffect.MoveToMarker -> scene.moveToMarker(effect.marker)
+                KnotUiEffect.RecallRope -> scene.recallRope("user")
                 is KnotUiEffect.Turn -> scene.turnBy(effect.degrees)
                 KnotUiEffect.ResetTurn -> scene.resetTurn()
                 KnotUiEffect.AskEyePermission -> if (!EyePermissionActivity.granted(context)) EyePermissionActivity.open(context)
+                KnotUiEffect.Quit -> quitApp(context, scene, navigator)
             }
         }
     }
@@ -101,3 +123,24 @@ fun KnotScreen() {
         KnotStage(state = state, scene = scene, onEvent = viewModel::onEvent)
     }
 }
+
+/** D26 quit, the factory order: release the scene, close the Stage, remove the app's tasks, end the process 400 ms later. */
+private suspend fun quitApp(context: Context, scene: KnotScene, navigator: SpatialNavigator) {
+    KnotLog.i("EXIT confirmed: release + closeStage + finishAndRemoveTask + exit")
+    RopeWindow.closeForQuit()
+    runCatching { scene.detach() }.onFailure { KnotLog.i("EXIT detach: $it") }
+    runCatching { navigator.closeStage() }.onFailure { KnotLog.i("EXIT closeStage: $it") }
+    runCatching {
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        am?.appTasks?.forEach { runCatching { it.finishAndRemoveTask() } }
+        context.findActivity()?.finishAndRemoveTask()
+    }.onFailure { KnotLog.i("EXIT finishAndRemoveTask: $it") }
+    Handler(Looper.getMainLooper()).postDelayed({ exitProcess(0) }, 400)
+}
+
+private tailrec fun Context.findActivity(): Activity? =
+    when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }

@@ -95,6 +95,8 @@ class KnotViewModel(private val appContext: Context) : ViewModel() {
                 val c = event.pose.center
                 saveProgress(s.progress.copy(ropePose = SavedPose(c.x, c.y, c.z, event.pose.yaw)))
             }
+            KnotEvent.RopeGone -> if (s.rope != null) update { copy(rope = null) }
+            KnotEvent.RopeWindowClosed -> if (s.inKnot) goLibrary()
             is KnotEvent.DemoPlayed -> if (event.serial == s.stepSerial && !s.playedOnce) update { copy(playedOnce = true) }
             is KnotEvent.DemoFinished ->
                 if (event.serial == s.stepSerial && s.mode == Mode.STEP && s.phase == Phase.DEMO && !s.hold) {
@@ -123,7 +125,11 @@ class KnotViewModel(private val appContext: Context) : ViewModel() {
                     KnotLog.i("MARKER placed at ${KnotLog.pos(event.point)}")
                     update { copy(marker = event.point) }
                 }
-            KnotEvent.PlaceMarkerClicked -> update { copy(placing = true, menuOpen = false, settingsOpen = false, outOfSight = null) }
+            // v0.1.4: the rope is in a system volume window; "put it in front of me" = recall that window
+            KnotEvent.PlaceMarkerClicked -> {
+                update { copy(menuOpen = false, settingsOpen = false, outOfSight = null) }
+                _effects.tryEmit(KnotUiEffect.RecallRope)
+            }
             KnotEvent.MoveToMarkerClicked -> s.marker?.let { m ->
                 update { copy(menuOpen = false) }
                 _effects.tryEmit(KnotUiEffect.MoveToMarker(m))
@@ -141,7 +147,7 @@ class KnotViewModel(private val appContext: Context) : ViewModel() {
             is KnotEvent.KnotPicked -> pickKnot(event.id)
             KnotEvent.FollowClicked -> enterStep(0)
             KnotEvent.PreviewAgainClicked -> update { copy(mode = Mode.PREVIEW, stepSerial = stepSerial + 1, playedOnce = false, ghost = null) }
-            KnotEvent.SettingsClicked -> update { copy(settingsOpen = !settingsOpen, confirmClear = false, menuOpen = false) }
+            KnotEvent.SettingsClicked -> update { copy(settingsOpen = !settingsOpen, confirmClear = false, confirmExit = false, menuOpen = false) }
             KnotEvent.BackClicked -> goLibrary()
             KnotEvent.NextClicked -> next()
             KnotEvent.PrevClicked -> if ((s.mode == Mode.STEP || s.mode == Mode.YOUR_TURN) && s.step > 0) enterStep(s.step - 1)
@@ -155,21 +161,21 @@ class KnotViewModel(private val appContext: Context) : ViewModel() {
                 saveSettings(s.settings.copy(speed = next))
                 KnotLog.i("SPEED $next")
             }
-            KnotEvent.MoreClicked -> update { copy(menuOpen = !menuOpen, settingsOpen = false, confirmClear = false) }
+            KnotEvent.MoreClicked -> update { copy(menuOpen = !menuOpen, settingsOpen = false, confirmClear = false, confirmExit = false) }
             KnotEvent.MenuBringHere -> {
                 update { copy(menuOpen = false) }
-                s.marker?.let { _effects.tryEmit(KnotUiEffect.MoveToMarker(it)) } ?: update { copy(placing = true) }
+                _effects.tryEmit(KnotUiEffect.RecallRope)
             }
             KnotEvent.MenuHideRope -> update { copy(menuOpen = false, ropeHidden = !ropeHidden) }
             KnotEvent.MenuRestart -> enterStep(0)
-            KnotEvent.MenuSettings -> update { copy(menuOpen = false, settingsOpen = true, confirmClear = false) }
+            KnotEvent.MenuSettings -> update { copy(menuOpen = false, settingsOpen = true, confirmClear = false, confirmExit = false) }
             KnotEvent.MenuHome -> goLibrary()
             KnotEvent.AgainClicked -> enterStep(0)
             KnotEvent.ResumeClicked -> {
                 val cur = s.progress.current
                 val knot = cur?.let { KnotLibrary.knot(it.knotId) }
                 if (cur == null || knot == null) return goLibrary()
-                update { copy(knotId = knot.id, ropeHidden = false, placing = rope == null) }
+                update { copy(knotId = knot.id, ropeHidden = false, placing = false) }
                 enterStep(cur.step.coerceIn(0, knot.steps.size - 1))
                 // design S13: back to that step, held at its end
                 update { copy(phase = Phase.HOLD, playedOnce = true) }
@@ -178,19 +184,28 @@ class KnotViewModel(private val appContext: Context) : ViewModel() {
                 update { copy(mode = Mode.LOADING) }
                 scheduleLeaveLoading(LOADING_MIN_MS)
             }
-            KnotEvent.BringHereClicked -> update { copy(outOfSight = null, placing = true) }
+            KnotEvent.BringHereClicked -> {
+                update { copy(outOfSight = null) }
+                _effects.tryEmit(KnotUiEffect.RecallRope)
+            }
             is KnotEvent.LanguageSelected -> saveSettings(s.settings.copy(language = event.language))
             is KnotEvent.HandSelected -> saveSettings(s.settings.copy(hand = event.hand))
             is KnotEvent.HeightSelected -> setHeight(event.height)
             is KnotEvent.DwellSelected -> saveSettings(s.settings.copy(dwell = event.on))
-            KnotEvent.ClearClicked -> update { copy(confirmClear = true) }
-            KnotEvent.ClearCancelled -> update { copy(confirmClear = false) }
+            KnotEvent.ClearClicked -> update { copy(confirmClear = true, confirmExit = false) }
+            KnotEvent.ExitClicked -> update { copy(confirmExit = true, confirmClear = false) }
+            KnotEvent.ExitCancelled -> update { copy(confirmExit = false) }
+            KnotEvent.ExitConfirmed -> {
+                update { copy(confirmExit = false) }
+                _effects.tryEmit(KnotUiEffect.Quit)
+            }
+            KnotEvent.ClearCancelled -> update { copy(confirmClear = false, confirmExit = false) }
             KnotEvent.ClearConfirmed -> {
                 saveProgress(Progress(ropePose = s.progress.ropePose))
-                update { copy(confirmClear = false) }
+                update { copy(confirmClear = false, confirmExit = false) }
                 KnotLog.i("CLEAR progress")
             }
-            KnotEvent.SettingsDismissed -> if (s.settingsOpen) update { copy(settingsOpen = false, confirmClear = false) }
+            KnotEvent.SettingsDismissed -> if (s.settingsOpen) update { copy(settingsOpen = false, confirmClear = false, confirmExit = false) }
             KnotEvent.WentBackground -> Unit
             KnotEvent.CameForeground -> Unit
             is KnotEvent.DebugState -> debugState(event.spec)
@@ -214,7 +229,7 @@ class KnotViewModel(private val appContext: Context) : ViewModel() {
             KnotEvent.DebugClear -> {
                 saveProgress(Progress())
                 saveSettings(Settings(dwell = !debuggable))
-                update { copy(mode = Mode.WELCOME, rope = null, marker = null, placing = false, menuOpen = false, settingsOpen = false, confirmClear = false, phase = Phase.DEMO, hold = false) }
+                update { copy(mode = Mode.WELCOME, rope = null, marker = null, placing = false, menuOpen = false, settingsOpen = false, confirmClear = false, confirmExit = false, phase = Phase.DEMO, hold = false) }
             }
         }
     }
@@ -245,19 +260,19 @@ class KnotViewModel(private val appContext: Context) : ViewModel() {
     }
 
     /**
-     * T3: S02 -> S03. The rope stays at the session's anchor (factory rule D1: it moves only when the user puts a new
-     * marker); with no anchor yet, S17 asks for a marker first.
+     * T3: S02 -> S03. v0.1.4: the rope comes up in its system volume window in front of the user (opened by the scene
+     * once the head is level); the user moves it with the window bar.
      */
     private fun pickKnot(id: String) {
         val k = KnotLibrary.knot(id) ?: return
         KnotLog.i("PICK ${k.id} steps=${k.steps.size} anchor=${s.rope != null}")
-        update { copy(knotId = k.id, step = 0, mode = Mode.PREVIEW, phase = Phase.DEMO, stepSerial = stepSerial + 1, playedOnce = false, settingsOpen = false, menuOpen = false, ropeHidden = false, ghost = null, turned = false, placing = rope == null) }
+        update { copy(knotId = k.id, step = 0, mode = Mode.PREVIEW, phase = Phase.DEMO, stepSerial = stepSerial + 1, playedOnce = false, settingsOpen = false, menuOpen = false, ropeHidden = false, ghost = null, turned = false, placing = false) }
         _effects.tryEmit(KnotUiEffect.ResetTurn)
     }
 
     private fun enterStep(index: Int) {
         val n = index.coerceIn(0, s.knot.steps.size - 1)
-        update { copy(mode = Mode.STEP, phase = Phase.DEMO, step = n, stepSerial = stepSerial + 1, playedOnce = false, menuOpen = false, settingsOpen = false, confirmClear = false, ghost = null, yourTurnGhost = null) }
+        update { copy(mode = Mode.STEP, phase = Phase.DEMO, step = n, stepSerial = stepSerial + 1, playedOnce = false, menuOpen = false, settingsOpen = false, confirmClear = false, confirmExit = false, ghost = null, yourTurnGhost = null) }
         saveProgress(s.progress.copy(current = CurrentKnot(s.knot.id, n)))
         KnotLog.i("STEP ${s.knot.id} ${n + 1}/${s.knot.steps.size} type=${s.currentStep.type} serial=${s.stepSerial}")
     }
@@ -302,18 +317,14 @@ class KnotViewModel(private val appContext: Context) : ViewModel() {
         return (v * n).toInt().coerceIn(0, n - 1)
     }
 
-    /** T22: only the rope frame's height moves; its place and yaw stay. */
+    /** T22: only the rope frame's height moves (v0.1.4: inside its volume window, see KnotScene.heightOffsetM). */
     private fun setHeight(height: RopeHeight) {
-        val old = s.settings.height
         saveSettings(s.settings.copy(height = height))
-        val rope = s.rope ?: return
-        val moved = RopePose(rope.center + Vec3(0f, height.aboveM - old.aboveM, 0f), rope.yaw)
-        onEvent(KnotEvent.RopePlaced(moved))
-        KnotLog.i("HEIGHT ${height.id} ropeY=${KnotLog.f(moved.center.y, 3)}")
+        KnotLog.i("HEIGHT ${height.id}")
     }
 
     private fun goLibrary() {
-        update { copy(mode = Mode.LIBRARY, menuOpen = false, settingsOpen = false, confirmClear = false, phase = Phase.DEMO, ghost = null, outOfSight = null) }
+        update { copy(mode = Mode.LIBRARY, menuOpen = false, settingsOpen = false, confirmClear = false, confirmExit = false, phase = Phase.DEMO, ghost = null, outOfSight = null) }
     }
 
     private fun saveSettings(settings: Settings) {
@@ -341,7 +352,7 @@ class KnotViewModel(private val appContext: Context) : ViewModel() {
         if (knotArg != null) update { copy(knotId = knotArg) }
         if (stepArg != null) update { copy(step = (stepArg - 1).coerceIn(0, knot.steps.size - 1)) }
         fun needRope() = debugAnchor()
-        update { copy(menuOpen = false, settingsOpen = false, confirmClear = false, hold = hold, ghost = null, yourTurnGhost = null, outOfSight = null, placing = false) }
+        update { copy(menuOpen = false, settingsOpen = false, confirmClear = false, confirmExit = false, hold = hold, ghost = null, yourTurnGhost = null, outOfSight = null, placing = false) }
         when (name) {
             "S00" -> update { copy(mode = Mode.LOADING) }
             "S01" -> update { copy(mode = Mode.WELCOME) }
@@ -389,6 +400,10 @@ class KnotViewModel(private val appContext: Context) : ViewModel() {
                 if (s.mode == Mode.LOADING || s.mode == Mode.WELCOME) update { copy(mode = Mode.LIBRARY) }
                 update { copy(settingsOpen = true, confirmClear = true) }
             }
+            "S18" -> {
+                if (s.mode == Mode.LOADING || s.mode == Mode.WELCOME) update { copy(mode = Mode.LIBRARY) }
+                update { copy(settingsOpen = true, confirmExit = true) }
+            }
             "S13" -> {
                 val k = knotArg ?: "bowline"
                 val st = (stepArg ?: 3) - 1
@@ -411,13 +426,8 @@ class KnotViewModel(private val appContext: Context) : ViewModel() {
         }
     }
 
-    /** Debug: with no anchor yet, a marker at a fixed Stage point 1.3 m ahead of the Stage origin and the rope moved there. */
-    private fun debugAnchor() {
-        if (s.rope != null) return
-        val m = Vec3(0f, 0f, -1.3f)
-        update { copy(marker = m) }
-        _effects.tryEmit(KnotUiEffect.MoveToMarker(m))
-    }
+    /** Debug: v0.1.4 the rope's volume window opens by itself once a knot is open; nothing to anchor. */
+    private fun debugAnchor() = Unit
 
     /** `DUMP {...}`: the state for QA. */
     fun dumpJson(): String {
@@ -437,6 +447,7 @@ class KnotViewModel(private val appContext: Context) : ViewModel() {
         o.put("menu", st.menuOpen)
         o.put("settings", st.settingsOpen)
         o.put("confirm", st.confirmClear)
+        o.put("confirmExit", st.confirmExit)
         o.put("controller", st.controllerActive)
         o.put("turned", st.turned)
         o.put("outOfSight", st.outOfSight ?: JSONObject.NULL)

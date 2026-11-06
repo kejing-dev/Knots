@@ -76,7 +76,7 @@ class KnotFrameSystem : System() {
 
 /**
  * The 3D side of the app: the demo rope (one dynamic tube mesh), its route dashes, the "pull here" arrows, the clove
- * hitch's post, the shadow, the handle, the "your turn" tip ring, and the placement of the pre-built panels. Compose
+ * hitch's post, the shadow, the "your turn" tip ring, and the placement of the pre-built panels. Compose
  * state comes in through [render] (idempotent); the demo motion, turning, dragging, look-to-advance and the
  * out-of-sight check happen in [onFrame] only and never go through Compose (high-rate data stays on the ECS side).
  * Everything started in [attach] is stopped in [detach]. Main thread only.
@@ -117,7 +117,6 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
     private var arrowMesh: MeshResource? = null
     private var postEntity: Entity? = null
     private var shadowEntity: Entity? = null
-    private var handleEntity: Entity? = null
     private var workTap: Entity? = null
     private var tipRing: Entity? = null
 
@@ -168,17 +167,24 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
     private var doneSerial = -1
 
     // dragging
-    private enum class Drag { NONE, TURN, HANDLE, TIP, PULL }
+    private enum class Drag { NONE, TURN, TIP, PULL }
 
     private var drag = Drag.NONE
     private var dragAcc = 0f
     private var dragTurnStarted = false
     private var dragSpinStart = 0f
-    private var livePose: RopePose? = null
+    /** v0.1.4: the rope's pose in Stage coordinates, read each frame from its system volume window (null: no volume). */
+    private var volumePose: RopePose? = null
+    private var volumeContent: SpatialViewContent? = null
+    private var volumeRoot: Entity? = null
+    private var volumeProbe: Entity? = null
+    private var sentPose: RopePose? = null
+    private var firstPose: RopePose? = null
+    private val seenScenes = HashMap<String, Int>()
+    private var seenLogMs = 0L
+    private var poseMovedSinceMs = NEVER
+    private var dragInVolume = false
     private var pointerMm = floatArrayOf(0f, 0f, 0f)
-
-    /** The handle bar's height in the rope frame (metres): a pinch starting at or below it moves the rope. */
-    private var handleY = -0.2f
 
     // "your turn" (S16)
     private var ytSerial = -1
@@ -284,10 +290,8 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
         val tn = Entity().named("ropeTurn")
         rr.addChild(tn)
         turnNode = tn
-        // the shadow and the handle do not turn with the rope
+        // the shadow does not turn with the rope (v0.1.4: no own bar under the rope; the system volume window has its bar)
         shadowEntity = staticPiece(rr, "shadow", m.shadow) { Shapes.disc(it, 0.1f) }?.also { it.setLocal(position = Vec3(0f, -SHADOW_BELOW_M, 0f)) }
-        yield()
-        handleEntity = staticPiece(rr, "handle", m.handle) { Shapes.cylinder(it, -0.03f, 0f, 0f, 0.03f, 0f, 0f, 0.008f, 16) }?.also { it.tapBox(Vec3(0.10f, 0.04f, 0.04f)) }
         yield()
         postEntity = staticPiece(tn, "post", m.post) { Shapes.cylinder(it, 0f, -0.12f, 0f, 0f, 0.12f, 0f, 0.02f, 32) }?.also { it.enabled = false }
         yield()
@@ -333,12 +337,103 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
 
     private val rebind = Runnable { if (stageRoot != null) bindTick.intValue++ }
 
+    /** The rope's volume window composed its SpatialView: move the rope's entity tree into it (centre = volume centre). */
+    fun attachVolume(content: SpatialViewContent) {
+        val rr = ropeRoot
+        if (rr == null) {
+            KnotLog.i("VOLUME content before the scene was built: retrying")
+            main.postDelayed({ attachVolume(content) }, 300L)
+            return
+        }
+        val root = Entity().named("volumeRoot")
+        content.addEntity(root)
+        val probe = Entity().named("volumeProbe")
+        content.addEntity(probe)
+        root.addChild(rr)
+        volumeRoot = root
+        volumeProbe = probe
+        volumeContent = content
+        sentPose = null
+        firstPose = null
+        KnotLog.i("VOLUME rope moved into the volume window")
+        render(ui, force = true)
+    }
+
+    /** The volume window is going away: take the rope back to the Stage (hidden) before its content is destroyed. */
+    fun detachVolume() {
+        val root = volumeRoot ?: return
+        ropeRoot?.let { rr ->
+            runCatching { stageRoot?.addChild(rr) }
+            rr.enabled = false
+        }
+        runCatching { root.destroy(true) }
+        runCatching { volumeProbe?.destroy(true) }
+        volumeRoot = null
+        volumeProbe = null
+        volumeContent = null
+        volumePose = null
+        sentPose = null
+        firstPose = null
+        if (drag != Drag.NONE && dragInVolume) drag = Drag.NONE
+        KnotLog.i("VOLUME rope back on the Stage (hidden)")
+        sink(KnotEvent.RopeGone)
+    }
+
+    /** The rope frame's height inside the volume for the height setting (the volume itself is where the user put it). */
+    private fun heightOffsetM(state: KnotUiState): Float = (state.height.aboveM - HEIGHT_NORMAL_M) * HEIGHT_IN_VOLUME
+
+    /** Each Stage frame: where the system put the volume, in Stage coordinates; told to the ViewModel once it settles. */
+    private fun volumeFrame(state: KnotUiState, now: Long) {
+        val root = volumeRoot
+        val stage = stageRoot
+        if (root == null || stage == null) return
+        val pose =
+            runCatching {
+                    val c = root.convertPositionTo(Vector3(0f, heightOffsetM(state), 0f), stage)
+                    val r = root.convertRotationTo(Quat.identity(), stage)
+                    val x = Quat4(r.x, r.y, r.z, r.w).rotate(Vec3.RIGHT)
+                    RopePose(Vec3(c.x, c.y, c.z), atan2(-x.z, x.x))
+                }
+                .onFailure { KnotLog.w("VOLUME pose failed: $it") }
+                .getOrNull() ?: return
+        val sent = sentPose
+        if (sent == null) {
+            // the window's first seconds report a placeholder pose at the Stage origin (emulator: (0, 0, 0.2), ~4 s)
+            // before the system places it: skip that, then the rope counts as placed once it has held still
+            if (pose.center.length < PLACEHOLDER_M) return
+            val last = firstPose
+            if (last == null || last.center.distanceTo(pose.center) > POSE_SEND_M) {
+                firstPose = pose
+                poseMovedSinceMs = now
+                return
+            }
+            if (now - poseMovedSinceMs < POSE_SETTLE_MS) return
+        } else {
+            volumePose = pose
+            val moved = sent.center.distanceTo(pose.center) > POSE_SEND_M || abs(wrap(sent.yaw - pose.yaw)) > POSE_SEND_RAD
+            if (!moved) {
+                poseMovedSinceMs = NEVER
+                return
+            }
+            if (poseMovedSinceMs == NEVER) poseMovedSinceMs = now
+            if (now - poseMovedSinceMs < POSE_SETTLE_MS) return
+        }
+        volumePose = pose
+        firstPose = null
+        poseMovedSinceMs = NEVER
+        sentPose = pose
+        if (sent == null) placedDistH = horizontalDistance(pose.center)
+        KnotLog.i("ROPE volume at center=${KnotLog.pos(pose.center)} yaw=${KnotLog.f(Math.toDegrees(pose.yaw.toDouble()).toFloat(), 1)} headDistH=${KnotLog.f(horizontalDistance(pose.center))}")
+        sink(KnotEvent.RopePlaced(pose))
+    }
+
     fun detach() {
         if (!attached && stageRoot == null) return
         attached = false
         buildJob?.cancel()
         buildJob = null
         if (ActiveScene.scene === this) ActiveScene.scene = null
+        RopeWindow.want(false, "stage gone")
         main.removeCallbacksAndMessages(null)
         headTracker.stop()
         eyeTracker.stop()
@@ -346,6 +441,14 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
         panelShown.clear()
         runCatching { rig?.release() }
         runCatching { ropeRoot?.destroy(true) }
+        runCatching { volumeRoot?.destroy(true) }
+        runCatching { volumeProbe?.destroy(true) }
+        volumeRoot = null
+        volumeProbe = null
+        volumeContent = null
+        volumePose = null
+        sentPose = null
+        firstPose = null
         runCatching { stageRoot?.destroy(true) }
         runCatching { contentProbe?.destroy(true) }
         shared?.close()
@@ -365,14 +468,12 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
         arrowMesh = null
         postEntity = null
         shadowEntity = null
-        handleEntity = null
         workTap = null
         tipRing = null
         hasHead = false
         builtStaticKey = ""
         lastMeshKey = ""
         drag = Drag.NONE
-        livePose = null
         dwellMs = 0f
         dwellStartMs = NEVER
         dwellSerial = -1
@@ -387,11 +488,12 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
     fun render(state: KnotUiState, force: Boolean = false) {
         ui = state
         if (!attached) return
-        val rope = livePose ?: state.rope
-        val show = state.inKnot && rope != null
+        RopeWindow.want(state.inKnot, "knot ${state.knot.id}")
+        val show = state.inKnot && volumeRoot != null
         ropeRoot?.enabled = show
-        if (show && rope != null) {
-            ropeRoot?.setLocal(position = rope.center + Vec3(0f, -state.knot.lowerMm / 1000f, 0f), rotation = Quat4.axisAngle(Vec3.UP, rope.yaw))
+        if (show) {
+            // inside the volume: the volume's centre is the rope frame's place; the system turns the volume to the user
+            ropeRoot?.setLocal(position = Vec3(0f, heightOffsetM(state) - state.knot.lowerMm / 1000f, 0f), rotation = Quat4.IDENTITY)
         }
         rig?.let { r ->
             if (!state.menuOpen) r[PanelSpec.MENU]?.hide()
@@ -440,7 +542,7 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
         return out
     }
 
-    /** Per step: the route dashes, the "pull here" arrows, the handle and tap box sized to the knot. */
+    /** Per step: the route dashes, the "pull here" arrows and the tap box sized to the knot. */
     private fun rebuildStatic(state: KnotUiState, g: KnotGeometry) {
         val m = materials ?: return
         val tn = turnNode ?: return
@@ -461,7 +563,7 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
             }
         }
         arrowEntity = replaceMesh(tn, arrowEntity, arrowMesh, arr, m.arrow, "arrows") { arrowMesh = it }
-        // bounds of the knot -> tap box and handle
+        // bounds of the knot -> tap box
         val full = g.frame(g.total)
         var minX = Float.MAX_VALUE
         var maxX = -Float.MAX_VALUE
@@ -479,13 +581,10 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
             }
         }
         val w = ((maxX - minX) / 1000f + 0.04f).coerceIn(0.16f, 0.5f)
-        // the box stops at the knot's lowest point so the handle bar below it takes its own hits
         val h = ((maxY - minY) / 1000f + 0.02f).coerceIn(0.2f, 0.6f)
         val cx = (maxX + minX) / 2000f * if (mirror) -1f else 1f
         val cy = (maxY + minY) / 2000f + 0.01f + (h - ((maxY - minY) / 1000f + 0.02f)) / 2f
         workTap?.tapBox(Vec3(w, h, 0.08f), Vec3(cx, cy, 0f))
-        handleY = minY / 1000f - 0.04f
-        handleEntity?.setLocal(position = Vec3(cx, handleY, 0f))
         lastMeshKey = ""
         KnotLog.i("SCENE step built knot=${state.knot.id} step=${idx + 1} d=${state.settings.drawMm} box=${KnotLog.f(w, 3)}x${KnotLog.f(h, 3)}")
     }
@@ -518,7 +617,16 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
 
     fun onFrame(context: SceneUpdateContext) {
         val root = stageRoot ?: return
-        if (root.scene == null || context.scene != root.scene) return
+        // v0.1.4: while the rope's volume window is open the Stage loses focus and its frames drop to ~1 fps, so the
+        // volume's frames drive the scene then (one driver at a time, never both)
+        val driver = volumeRoot?.scene ?: root.scene
+        if (fpsOn) seenScenes["${java.lang.System.identityHashCode(context.scene)}"] = (seenScenes["${java.lang.System.identityHashCode(context.scene)}"] ?: 0) + 1
+        if (fpsOn && SystemClock.elapsedRealtime() - seenLogMs > 1000L) {
+            seenLogMs = SystemClock.elapsedRealtime()
+            KnotLog.i("FRAMES scenes=$seenScenes driver=${java.lang.System.identityHashCode(driver)} stage=${java.lang.System.identityHashCode(root.scene)} volume=${volumeRoot?.let { java.lang.System.identityHashCode(it.scene) }}")
+            seenScenes.clear()
+        }
+        if (driver == null || context.scene != driver) return
         val now = SystemClock.elapsedRealtime()
         val dt = if (lastFrameMs == 0L) 0f else ((now - lastFrameMs).coerceIn(0L, 100L)) / 1000f
         lastFrameMs = now
@@ -532,6 +640,8 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
         val state = ui
         countFrame(now)
         if (!attached) return
+        RopeWindow.stepGate(now, headPitchDeg())
+        volumeFrame(state, now)
         sampleController(state, now, dt)
         turnFrame(state, now, dt)
         demoFrame(state, now)
@@ -545,7 +655,7 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
 
     /** Timeline of the demo (design `spatialLayout.rope.motion`), "your turn", scrubbing, done: one mesh update at ≤ 30 Hz. */
     private fun demoFrame(state: KnotUiState, now: Long) {
-        val rope = livePose ?: state.rope
+        val rope = volumePose
         if (!state.inKnot || rope == null) return
         val g = geometry(state)
         val n = g.steps.size
@@ -830,8 +940,15 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
     }
 
     /** S14: the user walked away (> 1.5 m) or turned away (> 90° for 2 s). */
+    /** Head pitch (+ up) for the volume's level gate; null while the head pose is not valid yet (all-zero first frames). */
+    private fun headPitchDeg(): Float? {
+        if (!hasHead || head.position.length < 1e-3f) return null
+        val f = head.forward
+        return Math.toDegrees(kotlin.math.asin(f.y.coerceIn(-1f, 1f).toDouble())).toFloat()
+    }
+
     private fun outOfSightFrame(state: KnotUiState, now: Long) {
-        val rope = livePose ?: state.rope
+        val rope = volumePose
         if (!state.inKnot || rope == null || !hasHead) {
             awaySinceMs = NEVER
             awaySent = null
@@ -842,9 +959,8 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
         val blocks = ropeBlocksPanel(rope, state.knot.lowerMm / 1000f)
         if (blocks != blocksSent) {
             blocksSent = blocks
-            // q3-1: see-through is not enough; the rope's tap box and the handle must not take the panel's pinches
+            // q3-1: see-through is not enough; the rope's tap box must not take the panel's pinches
             workTap?.enabled = !blocks
-            handleEntity?.enabled = !blocks
             KnotLog.i("CONE rope ${if (blocks) "in front of the panel: see-through, hit boxes off" else "clear of the panel"}")
         }
         ropeRoot?.setOpacity(if (near || blocks) SEE_THROUGH_OPACITY else 1f)
@@ -888,7 +1004,7 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
      */
     private fun placePanels(state: KnotUiState, rig: PanelRig, now: Long) {
         if (!hasHead) return
-        val rope = livePose ?: state.rope
+        val rope = volumePose
         val side = if (state.inKnot && rope != null && state.outOfSight == null && !state.placing) (if (state.hand == Hand.LEFT) -PANEL_SIDE_RAD else PANEL_SIDE_RAD) else 0f
         if (side != follower.sideRad) {
             follower.sideRad = side
@@ -1055,21 +1171,19 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
      * user), and never nearer than 0.6 m to the head (D14). It stays there for the session: next / previous / replay /
      * another knot / back from the background never move it; only a new marker does.
      */
+    /**
+     * Debug `marker ... move` / `tomarker` (kept for old QA scripts): v0.1.4 the rope is in a system volume window the
+     * app cannot move, so this brings the window back in front of the user (close, then open once the head is level).
+     */
     fun moveToMarker(marker: Vec3) {
-        if (!hasHead) {
-            KnotLog.i("ROPE move: no head pose yet, retrying")
-            main.postDelayed({ moveToMarker(marker) }, 300L)
-            return
-        }
-        val center = withClearance(Vec3(marker.x, marker.y + ui.height.aboveM, marker.z))
-        // faceViewer: the frame's -z points from the viewer to the rope
-        val flat = Vec3(center.x - head.position.x, 0f, center.z - head.position.z).let { if (it.length < 1e-3f) Vec3.AHEAD else it.normalized() }
-        val yaw = atan2(-flat.x, -flat.z)
-        livePose = null
+        KnotLog.i("ROPE marker ${KnotLog.pos(marker)} ignored: the rope is in a system volume; recall it instead")
+        recallRope("marker")
+    }
+
+    /** "Bring it here": the volume window is closed and opened again in front of the user (the system places it). */
+    fun recallRope(why: String) {
         resetTurn()
-        placedDistH = horizontalDistance(center)
-        KnotLog.i("ROPE placed at marker=${KnotLog.pos(marker)} center=${KnotLog.pos(center)} yaw=${KnotLog.f(Math.toDegrees(yaw.toDouble()).toFloat(), 1)} headDistH=${KnotLog.f(horizontalDistance(center))}")
-        sink(KnotEvent.RopePlaced(RopePose(center, yaw)))
+        RopeWindow.recall(why)
     }
 
     /** S17: the floor is a tap target while placing; the marker ring sits on the chosen point, a ghost ring under the controller ray / gaze. */
@@ -1077,7 +1191,7 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
         val placing = state.placing && state.inKnot
         floorTap?.enabled = placing
         val m = state.marker
-        markerRing?.enabled = state.inKnot && m != null && (placing || state.rope == null)
+        markerRing?.enabled = state.inKnot && m != null && placing
         if (m != null) markerRing?.setLocal(position = m + Vec3(0f, 0.004f, 0f))
         val hit = if (placing) lastRay?.let { (o, d) -> if (d.y < -0.05f) o + d * (-o.y / d.y) else null } else null
         ghostRing?.enabled = hit != null
@@ -1085,16 +1199,6 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
     }
 
     private fun horizontalDistance(p: Vec3): Float = hypot(p.x - head.position.x, p.z - head.position.z)
-
-    /** D14: never nearer than 0.6 m (horizontal) to the head; pushed out along head -> rope. */
-    private fun withClearance(p: Vec3): Vec3 {
-        val dx = p.x - head.position.x
-        val dz = p.z - head.position.z
-        val d = hypot(dx, dz)
-        if (d >= CLEARANCE_M) return p
-        val (ux, uz) = if (d < 1e-3f) (Vec3(head.forward.x, 0f, head.forward.z).let { if (it.length < 0.1f) Vec3.AHEAD else it.normalized() }).let { it.x to it.z } else (dx / d) to (dz / d)
-        return Vec3(head.position.x + ux * CLEARANCE_M, p.y, head.position.z + uz * CLEARANCE_M)
-    }
 
     // =========================================================================================
     // system pointer (gaze + pinch / controller ray + trigger)
@@ -1110,29 +1214,22 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
     }
 
     /**
-     * Drags: the handle moves the whole rope (T25); on the rope near the orange tip during "your turn" the tip follows the
+     * Drags (v0.1.4: moving the whole rope is the system volume window bar's): on the rope near the orange tip during "your turn" the tip follows the
      * route (T24); a tighten step's "your turn" is any pull ≥ 4 cm; otherwise a sideways drag turns the rope (T10) where
      * allowed (with a real rope in the hands only on S03 / S07).
      */
-    fun onSpatialDrag(phase: String, start: Offset3D?, value: SpatialDragValue) {
+    fun onSpatialDrag(phase: String, start: Offset3D?, value: SpatialDragValue, inVolume: Boolean = false) {
         when (phase) {
             "start" -> {
-                KnotLog.i("DRAG raw start target=${runCatching { value.targetEntity?.getName() }.getOrNull()} start=${start?.let { "${it.x},${it.y},${it.z}" }}")
+                KnotLog.i("DRAG raw start volume=$inVolume target=${runCatching { value.targetEntity?.getName() }.getOrNull()} start=${start?.let { "${it.x},${it.y},${it.z}" }}")
                 val target = value.targetEntity ?: return
                 val state = ui
-                if (!state.inKnot || state.rope == null) return
+                if (!state.inKnot || volumePose == null) return
                 drag = Drag.NONE
                 dragAcc = 0f
                 dragTurnStarted = false
+                dragInVolume = inVolume
                 when {
-                    handleEntity != null && target.id == handleEntity!!.id -> {
-                        drag = Drag.HANDLE
-                        livePose = state.rope
-                    }
-                    workTap != null && target.id == workTap!!.id && onHandle(start, state) -> {
-                        drag = Drag.HANDLE
-                        livePose = state.rope
-                    }
                     workTap != null && target.id == workTap!!.id -> {
                         val g = geometry(state)
                         val r = g.steps[state.step.coerceIn(0, g.steps.size - 1)]
@@ -1150,9 +1247,10 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
                 KnotLog.i("DRAG start kind=$drag target=${runCatching { target.getName() }.getOrNull()}")
             }
             "move" -> {
-                if (drag == Drag.NONE) return
+                if (drag == Drag.NONE || inVolume != dragInVolume) return
                 val d = value.dragAmount
-                val delta = Vec3(pxToM(d.x), -pxToM(d.y), pxToM(d.z))
+                // in the volume the view's pixels are not the Stage's: convert the drag through the volume's content
+                val delta = (if (inVolume) toStageDelta(d.x, d.y, d.z) else null) ?: Vec3(pxToM(d.x), -pxToM(d.y), pxToM(d.z))
                 if (fpsOn) KnotLog.i("DRAG move px=(${d.x}, ${d.y}, ${d.z}) m=${KnotLog.pos(delta)}")
                 dragMove(delta)
             }
@@ -1163,20 +1261,11 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
         }
     }
 
-    /** The pinch began on the handle bar (the rope's tap box reaches down to it and takes the hit). */
-    private fun onHandle(start: Offset3D?, state: KnotUiState): Boolean {
-        if (start == null) return false
-        val stage = toStage(start.x, start.y, start.z) ?: return false
-        val local = toRopeLocalMm(stage, state)
-        KnotLog.i("DRAG start local=(${KnotLog.f(local[0], 1)}, ${KnotLog.f(local[1], 1)}, ${KnotLog.f(local[2], 1)}) mm handleY=${KnotLog.f(handleY * 1000f, 1)} stage=${KnotLog.pos(stage)}")
-        return local[1] / 1000f < handleY + HANDLE_GRAB_M
-    }
-
     /** The drag began within 4.5 cm of the orange tip (in the rope's plane; design: hit radius 3 cm, generous for the pointer). */
     private fun nearTip(start: Offset3D?, state: KnotUiState): Boolean {
         val tip = lastLine?.let { it.at(it.tipArc) } ?: return false
         if (start == null) return true
-        val stage = toStage(start.x, start.y, start.z) ?: return true
+        val stage = toStage(start.x, start.y, start.z, dragInVolume) ?: return true
         val local = toRopeLocalMm(stage, state)
         val d = hypot(local[0] - tip[0], local[1] - tip[1])
         KnotLog.i("DRAG tip distance=${KnotLog.f(d, 1)} mm")
@@ -1185,7 +1274,7 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
 
     /** A Stage point -> rope-frame millimetres (unturned, unmirrored geometry space). */
     private fun toRopeLocalMm(p: Vec3, state: KnotUiState): FloatArray {
-        val rope = livePose ?: state.rope ?: return floatArrayOf(0f, 0f, 0f)
+        val rope = volumePose ?: return floatArrayOf(0f, 0f, 0f)
         val origin = rope.center + Vec3(0f, -state.knot.lowerMm / 1000f, 0f)
         val local = Quat4.axisAngle(Vec3.UP, -(rope.yaw + spin)).rotate(p - origin)
         val sx = if (state.hand == Hand.LEFT) -1f else 1f
@@ -1194,13 +1283,8 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
 
     private fun dragMove(delta: Vec3) {
         val state = ui
-        val rope = state.rope ?: return
+        val rope = volumePose ?: return
         when (drag) {
-            Drag.HANDLE -> {
-                val cur = livePose ?: rope
-                livePose = RopePose(cur.center + delta, cur.yaw)
-                render(state)
-            }
             Drag.TURN -> {
                 val local = Quat4.axisAngle(Vec3.UP, -(rope.yaw)).rotate(delta)
                 dragAcc += local.x
@@ -1248,15 +1332,6 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
     private fun dragEnd() {
         val state = ui
         when (drag) {
-            Drag.HANDLE -> {
-                val p = livePose
-                livePose = null
-                if (p != null) {
-                    val pushed = withClearance(p.center)
-                    KnotLog.i("DRAG handle end center=${KnotLog.pos(pushed)} headDistH=${KnotLog.f(horizontalDistance(pushed))} pushed=${pushed != p.center}")
-                    sink(KnotEvent.RopePlaced(RopePose(pushed, p.yaw)))
-                }
-            }
             Drag.TURN -> {
                 if (dragTurnStarted) snapIfNear()
                 KnotLog.i("DRAG turn end spin=${KnotLog.f(Math.toDegrees(wrap(spin).toDouble()).toFloat(), 1)}")
@@ -1268,10 +1343,17 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
         render(state)
     }
 
-    /** View-local pixels -> Stage metres, through the SpatialView content conversion. */
-    private fun toStage(x: Float, y: Float, z: Float): Vec3? {
-        val c = content ?: return null
-        val probe = contentProbe ?: return null
+    /** A drag amount in the volume view's pixels -> a Stage vector (metres): two points converted, subtracted. */
+    private fun toStageDelta(x: Float, y: Float, z: Float): Vec3? {
+        val a = toStage(0f, 0f, 0f, true) ?: return null
+        val b = toStage(x, y, z, true) ?: return null
+        return b - a
+    }
+
+    /** View-local pixels -> Stage metres, through the SpatialView content conversion (the Stage's or the volume's). */
+    private fun toStage(x: Float, y: Float, z: Float, inVolume: Boolean = false): Vec3? {
+        val c = (if (inVolume) volumeContent else content) ?: return null
+        val probe = (if (inVolume) volumeProbe else contentProbe) ?: return null
         return runCatching {
                 val local = c.convertPosition(Vector3(x, y, z), ViewCoordinateSpace.Local, c.localSpatialCoordinateSpace)
                 probe.convertPositionTo(local, null).domain()
@@ -1293,15 +1375,6 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
 
     /** Debug `release`: as if the stick / drag let go now (snap within ±12°). */
     fun release() = snapIfNear()
-
-    /** Debug `drag dx dy dz` (metres): a handle drag of that amount, released. */
-    fun debugHandleDrag(delta: Vec3) {
-        val rope = ui.rope ?: return
-        drag = Drag.HANDLE
-        livePose = rope
-        dragMove(delta)
-        dragEnd()
-    }
 
     /** Debug `tip <share>`: drags the tip along the route to that share (as the pointer would, in 3 cm jumps). */
     fun debugTipTo(share: Float) {
@@ -1362,7 +1435,8 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
     override fun sceneJson(): JSONObject {
         val o = JSONObject()
         val state = ui
-        val rope = state.rope
+        val rope = volumePose
+        o.put("volume", RopeWindow.state)
         o.put("rope", rope?.let { JSONObject().put("x", it.center.x).put("y", it.center.y).put("z", it.center.z).put("yawDeg", Math.toDegrees(it.yaw.toDouble())) } ?: JSONObject.NULL)
         o.put("head", JSONObject().put("x", head.position.x).put("y", head.position.y).put("z", head.position.z))
         if (rope != null) {
@@ -1425,7 +1499,14 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
         private const val DONE_TURN_S = 12f
 
         /** Rope placement (design `spatialLayout.rope.where`, D14). */
-        private const val CLEARANCE_M = 0.6f
+
+        /** v0.1.4 rope volume: the height setting moves the rope frame by half its old step inside the volume. */
+        private const val HEIGHT_NORMAL_M = 1.10f
+        private const val HEIGHT_IN_VOLUME = 0.5f
+        private const val POSE_SEND_M = 0.02f
+        private val POSE_SEND_RAD = Math.toRadians(3.0).toFloat()
+        private const val POSE_SETTLE_MS = 500L
+        private const val PLACEHOLDER_M = 0.5f
         private const val SHADOW_BELOW_M = 0.25f
         private const val SEE_THROUGH_M = 0.25f
         private const val SEE_THROUGH_OPACITY = 0.3f
@@ -1453,7 +1534,6 @@ class KnotScene(private val sink: (KnotEvent) -> Unit) : KnotProbe.SceneProbe {
 
         /** "Your turn" (design `spatialLayout.rope.yourTurn`). */
         private const val TIP_GRAB_MM = 45f
-        private const val HANDLE_GRAB_M = 0.025f
         private const val MAX_JUMP_MM = 30f
         private const val ROUTE_REACH_MM = 80f
         private const val DONE_SHARE = 0.95f

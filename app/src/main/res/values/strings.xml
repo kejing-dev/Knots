@@ -100,10 +100,15 @@
     <string name="action_cancel">Cancel</string>
     <string name="action_clear">Clear</string>
 
-    <string name="menu_bring_here">Move to marker</string>
+    <string name="menu_bring_here">Bring the rope here</string>
     <string name="menu_hide_rope">Hide the demo rope</string>
     <string name="menu_show_rope">Show the demo rope</string>
     <string name="menu_restart">Start from step 1</string>
     <string name="menu_settings">Settings</string>
     <string name="menu_home">All knots</string>
+    <string name="settings_exit">Quit Knots</string>
+    <string name="exit_title">Quit Knots?</string>
+    <string name="exit_body">Your progress is saved</string>
+    <string name="exit_yes">Quit</string>
+    <string name="level_hint">Look straight ahead and the rope appears</string>
 </resources>

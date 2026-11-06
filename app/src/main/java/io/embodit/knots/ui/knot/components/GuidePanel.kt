@@ -37,6 +37,7 @@ import io.embodit.knots.ui.knot.Mode
 import io.embodit.knots.ui.knot.Phase
 import io.embodit.knots.ui.knot.debug.probe
 import io.embodit.knots.ui.knot.scene.PanelSpec
+import io.embodit.knots.ui.knot.scene.RopeWindow
 import io.embodit.knots.ui.theme.KnotColors
 
 /**
@@ -56,6 +57,8 @@ internal fun GuidePanel(state: KnotUiState, filled: Boolean, onEvent: (KnotEvent
             OutOfSight(state, onEvent)
             return@Glass
         }
+        // v0.1.4 (D9): the rope's volume window opens only while the head is level
+        if (state.inKnot && RopeWindow.levelHint) HintStrip(rs(R.string.level_hint), PicoTheme.colorScheme.alert)
         when (state.mode) {
             Mode.LOADING -> Loading()
             Mode.WELCOME -> Welcome(state, onEvent)
@@ -128,6 +131,7 @@ private fun LabeledRow(label: String, content: @Composable () -> Unit) {
 private fun ColumnScope.Library(state: KnotUiState, onEvent: (KnotEvent) -> Unit) {
     TitleRow(title = rs(R.string.library_title), trailing = { Key("gear", R.drawable.ic_gear, rs(R.string.action_settings)) { onEvent(KnotEvent.SettingsClicked) } })
     val cats = KnotLibrary.categories
+    // gate:allow tabs-segment filters the one knot list below by category on the same page (no page switch); user 2026-11-05 asked to keep it
     Segments(
         items = cats.map { "cat_${it.id}" to categoryName(it) },
         selected = cats.indexOf(state.category),

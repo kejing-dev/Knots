@@ -50,6 +50,8 @@ data class KnotUiState(
     val menuOpen: Boolean = false,
     val settingsOpen: Boolean = false,
     val confirmClear: Boolean = false,
+    /** S18: settings' "quit app" asks once more in the same panel (factory D26). */
+    val confirmExit: Boolean = false,
     val settings: Settings = Settings(),
     val progress: Progress = Progress(),
     /** A controller delivers poses: S09 hint on the step panel. */
@@ -99,6 +101,7 @@ data class KnotUiState(
         get() =
             when {
                 settingsOpen && confirmClear -> "S12"
+                settingsOpen && confirmExit -> "S18"
                 settingsOpen -> "S11"
                 menuOpen -> "S10"
                 placing && inKnot -> "S17"
@@ -244,6 +247,18 @@ sealed class KnotEvent {
 
     data object SettingsDismissed : KnotEvent()
 
+    /** v0.1.4: the rope's volume window went away (closed, recalled): no rope until it reports again. */
+    data object RopeGone : KnotEvent()
+
+    /** v0.1.4: the user closed the rope's volume window with the system bar's ×: back to the library. */
+    data object RopeWindowClosed : KnotEvent()
+
+    data object ExitClicked : KnotEvent()
+
+    data object ExitConfirmed : KnotEvent()
+
+    data object ExitCancelled : KnotEvent()
+
     // lifecycle
     data object WentBackground : KnotEvent()
 
@@ -283,4 +298,10 @@ sealed class KnotUiEffect {
 
     /** Ask for the eye-tracking permission (once). */
     data object AskEyePermission : KnotUiEffect()
+
+    /** v0.1.4: bring the rope's volume window back in front of the user (the system places it). */
+    data object RecallRope : KnotUiEffect()
+
+    /** Quit (D26): release the scene, remove the task, end the process. */
+    data object Quit : KnotUiEffect()
 }

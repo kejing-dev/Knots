@@ -99,10 +99,15 @@
     <string name="action_cancel">取消</string>
     <string name="action_clear">清空</string>
 
-    <string name="menu_bring_here">移到标记处</string>
+    <string name="menu_bring_here">把绳子叫回面前</string>
     <string name="menu_hide_rope">隐藏演示绳</string>
     <string name="menu_show_rope">显示演示绳</string>
     <string name="menu_restart">从第 1 步打</string>
     <string name="menu_settings">设置</string>
     <string name="menu_home">回绳结库</string>
+    <string name="settings_exit">退出应用</string>
+    <string name="exit_title">退出绳结？</string>
+    <string name="exit_body">进度已保存</string>
+    <string name="exit_yes">退出</string>
+    <string name="level_hint">平视前方，绳子就出来</string>
 </resources>

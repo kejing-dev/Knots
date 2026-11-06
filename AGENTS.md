@@ -35,7 +35,27 @@ tools/                         make_icon.py (adaptive icon XML + 512 PNG), subse
 Per-frame work (demo motion, mesh updates at <= 30 Hz, turning, drags, gaze, out-of-sight) is in `KnotScene.onFrame`
 only; Compose only renders the state and reads two quantised values (`DemoClock`, `DwellTarget.progress`).
 
-## Placement (v0.1.1, factory rules D1 / D20)
+## Rope volume (v0.1.4, user 2026-11-05, factory D21 / D9)
+
+The demo rope no longer stands in the Stage with an app-made 3D bar under it (the white `handle` cylinder,
+`KnotScene.build` -> `staticPiece(rr, "handle", m.handle) { Shapes.cylinder(...) }` + `tapBox`, dragged as
+`Drag.HANDLE`): it stands in a system **Volumetric WindowContainer** `RopeVolume` (`Main.kt`, 0.45 x 0.5 x 0.45 m,
+`WorldScale.Fixed`, `VolumeAlignment.Gravity`, no material background). The system draws the window bar under it; moving
+and closing the rope are the system's (× = back to the library). The app stays a Shared Space Stage app.
+
+- `ui/knot/scene/RopeWindow.kt`: `RopeWindow` (process-level: wanted while a knot is open, recall = close + open after
+  `ON_DESTROY`, quit) and `RopeVolume()` (the window's SpatialView; drags on the rope arrive here). Every open waits for a
+  level head (`domain/LevelGate.kt`, |pitch| <= 10° for 300 ms; the guide panel shows "平视前方，绳子就出来").
+- `KnotScene.attachVolume` moves the rope's entity tree into the window; `volumeFrame` reads the window's Stage pose each
+  frame (`convertPositionTo` / `convertRotationTo` the Stage root) and sends `RopePlaced` once it settles; the panel
+  placement (28° to the hand side), the CONE see-through, S14 and the drags use that pose. The first ~4 s the window
+  reports a placeholder at the Stage origin: ignored (`PLACEHOLDER_M`).
+- While the window is open its frames drive `KnotFrameSystem` (the Stage's slow down without focus); the window
+  registers the system and never unregisters it (unregistering is per class for the whole app).
+- "Put a new marker" / "Move to marker" / S14 "Bring it here" now recall the window in front of the user; the height
+  setting moves the rope ±7.5 cm inside the window. S17 (floor marker) is only reachable by `state S17`.
+
+## Placement (v0.1.1, factory rules D1 / D20; v0.1.4: superseded by the rope volume above)
 
 The rope is never placed from the head pose. With no anchor yet, opening a knot shows S17: point the controller ray
 (trigger) or look + pinch at the floor (an invisible 16 m tap box at Stage y = 0; a ghost ring follows the controller ray
@@ -63,7 +83,7 @@ adb -s <serial> shell "am broadcast -a io.embodit.knots.DEBUG -p io.embodit.knot
 
 | command | effect |
 |---|---|
-| `state <Sxx> [knot] [step] [hold]` | S00 .. S16; defaults: S04/S06/S08/S09 bowline 2, S05 bowline 4, S07 reef, S13 bowline 3, S16 bowline 2; S06 = paused at 60 %, S08 = turned 180° |
+| `state <Sxx> [knot] [step] [hold]` | S00 .. S18 (S18 = settings, quit-app confirm); defaults: S04/S06/S08/S09 bowline 2, S05 bowline 4, S07 reef, S13 bowline 3, S16 bowline 2; S06 = paused at 60 %, S08 = turned 180° |
 | `knot <figure8\|reef\|clove\|bowline>`, `step <n>` | pick / jump (no anchor yet: a debug marker at Stage (0, 0, -1.3)) |
 | `marker x,z [move]`, `tomarker`, `state S17 [knot]` | floor marker at Stage (x, 0, z) (+ move the rope there) / "move to marker" / the place-marker panel |
 | `next` `prev` `replay` `more` `back` `follow` `play` `speed` `scrub <0..1>` | panel controls |
@@ -71,7 +91,7 @@ adb -s <serial> shell "am broadcast -a io.embodit.knots.DEBUG -p io.embodit.knot
 | `yourturn <0..1>` / `off`, `tip <0..1>` | freeze S16 / drag the tip along the route (completes at 95 %) |
 | `rope 4\|8\|11`, `rope on\|off`, `hand left\|right`, `height high\|normal\|low`, `lang system\|zh\|en`, `dwell on\|off`, `category <id>` | settings |
 | `turn <deg>`, `turn90`, `myview`, `release`, `stick <x> [ms]` | turning; `release` snaps within ±12° |
-| `drag dx,dy,dz` | handle drag (metres) then the 0.6 m clearance push |
+| `recall` | close the rope volume and open it again in front (v0.1.4; `drag` is gone with the handle bar) |
 | `head yaw <deg>` / `head off` | S14 without turning the camera |
 | `gaze x,y,z` / `off`, `aim [control]` | look-to-advance tests |
 | `dataerror on\|off` | S15 on the next load |
