@@ -36,10 +36,11 @@ PICO 混合现实应用（PICO OS 6 · Spatial SDK 6.1.9 · 透视 · Shared Spa
 
 ### 安装
 
-从 [Release v0.1.4](https://github.com/kejing-dev/Knots/releases/tag/v0.1.4) 下载 `Knots-v0.1.4.apk`，头显开启开发者模式并用 USB 连上电脑：
+[Release v0.1.4](https://github.com/kejing-dev/Knots/releases/tag/v0.1.4) 里的 `Knots-v0.1.4.apk` 是未签名的 release 包（给应用商店上架用，不能直接 `adb install`）。自己装请从源码构建 debug 包，头显开启开发者模式并用 USB 连上电脑：
 
 ```bash
-adb install -r Knots-v0.1.4.apk
+./gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 pico-cli app launch io.embodit.knots
 ```
 
@@ -99,10 +100,11 @@ A PICO mixed-reality app (PICO OS 6 · Spatial SDK 6.1.9 · passthrough · Share
 
 ### Install
 
-Download `Knots-v0.1.4.apk` from [Release v0.1.4](https://github.com/kejing-dev/Knots/releases/tag/v0.1.4), enable developer mode on the headset and connect it over USB:
+`Knots-v0.1.4.apk` in [Release v0.1.4](https://github.com/kejing-dev/Knots/releases/tag/v0.1.4) is an unsigned release build (for store submission; `adb install` rejects it). To install it yourself, build the debug APK from source, enable developer mode on the headset and connect it over USB:
 
 ```bash
-adb install -r Knots-v0.1.4.apk
+./gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 pico-cli app launch io.embodit.knots
 ```
 
